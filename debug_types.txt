@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "name": "Annual",
+    "description": "Created automatically",
+    "max_days_per_year": 10,
+    "is_paid": true,
+    "is_active": true,
+    "created_at": "2026-03-17T12:27:40.000Z",
+    "updated_at": "2026-03-17T12:27:40.000Z"
+  },
+  {
+    "id": 2,
+    "name": "Sick",
+    "description": "Created automatically",
+    "max_days_per_year": 10,
+    "is_paid": true,
+    "is_active": true,
+    "created_at": "2026-03-23T10:52:57.000Z",
+    "updated_at": "2026-03-23T10:52:57.000Z"
+  },
+  {
+    "id": 3,
+    "name": "Casual",
+    "description": "Created automatically",
+    "max_days_per_year": 10,
+    "is_paid": true,
+    "is_active": true,
+    "created_at": "2026-03-23T12:16:23.000Z",
+    "updated_at": "2026-03-23T12:16:23.000Z"
+  },
+  {
+    "id": 4,
+    "name": "Maternity",
+    "description": "Created automatically",
+    "max_days_per_year": 10,
+    "is_paid": true,
+    "is_active": true,
+    "created_at": "2026-03-23T12:16:39.000Z",
+    "updated_at": "2026-03-23T12:16:39.000Z"
+  },
+  {
+    "id": 5,
+    "name": "Paternity",
+    "description": "Created automatically",
+    "max_days_per_year": 10,
+    "is_paid": true,
+    "is_active": true,
+    "created_at": "2026-03-23T12:23:30.000Z",
+    "updated_at": "2026-03-23T12:23:30.000Z"
+  },
+  {
+    "id": 6,
+    "name": "Unpaid",
+    "description": "Created automatically",
+    "max_days_per_year": 10,
+    "is_paid": true,
+    "is_active": true,
+    "created_at": "2026-03-23T12:40:55.000Z",
+    "updated_at": "2026-03-23T12:40:55.000Z"
+  }
+]

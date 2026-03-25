@@ -1,0 +1,6 @@
+[
+  {
+    "Table": "leave_requests",
+    "Create Table": "CREATE TABLE `leave_requests` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `employee_id` int NOT NULL,\n  `start_date` date NOT NULL,\n  `end_date` date NOT NULL,\n  `total_days` decimal(5,1) DEFAULT NULL,\n  `reason` text,\n  `status` enum('pending','approved','rejected','cancelled') DEFAULT 'pending',\n  `approved_by` int DEFAULT NULL,\n  `rejection_reason` text,\n  `created_at` datetime DEFAULT NULL,\n  `updated_at` datetime DEFAULT NULL,\n  `leave_type_id` int NOT NULL,\n  `approved_at` datetime DEFAULT NULL,\n  PRIMARY KEY (`id`),\n  KEY `approved_by` (`approved_by`),\n  KEY `employee_id` (`employee_id`),\n  KEY `leave_type_id` (`leave_type_id`),\n  CONSTRAINT `leave_requests_ibfk_85` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,\n  CONSTRAINT `leave_requests_ibfk_86` FOREIGN KEY (`leave_type_id`) REFERENCES `leave_types` (`id`) ON DELETE CASCADE ON UPDATE CASCADE\n) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+  }
+]
