@@ -49,14 +49,16 @@ export default function Chat() {
   const { users } = useUserManagement();
 
   // Strictly normalize current user ID as instructed
-  const currentUserId = Number(user?.id || user?._id || 0);
+  // Ensure numeric ID for room identification and message matching
+  const currentUserId = Number(user?.id || (typeof user?._id === 'number' ? user._id : 0) || 0);
 
   // ─── State ──────────────────────────────────────────────────────
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
-  const [conversations, setConversations] = useState<Array<{ id: number; members?: Array<{ user_id: number, user?: { id: number, email: string } }> }>>([]);
+  const [conversations, setConversations] = useState<Array<any>>([]);
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
 
   const [msgInput, setMsgInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -312,79 +314,77 @@ export default function Chat() {
     };
   }, [currentUserId, user]);
 
-  // ─── Build Contacts from Employee Records ───────────────────────
+  // ─── Build Contacts from Active Conversations ───────────────────
   useEffect(() => {
-    if (users.length === 0) return;
+    // 🔍 Map backend conversations to the frontend 'Contact' interface
+    const dynamicContacts: Contact[] = conversations.map((conv) => {
+      // Find the other participant who is not the current user
+      const otherParticipant = conv.participants?.find((p: any) => p.id !== currentUserId);
+      if (!otherParticipant) return null;
 
-    const dynamicContacts: Contact[] = users
-      .filter(u => u.email?.toLowerCase().trim() !== user?.email?.toLowerCase().trim())
-      .map((u, i) => {
-        let contactId = parseInt(u.employeeId.replace(/\D/g, "")) || Date.now() + i;
-        // Use users-table PK for chat identity
-        const authUserId = u.userId || 0;
-        let contactName = u.name;
+      const authUserId = otherParticipant.id;
+      const room = roomKey(currentUserId, authUserId);
+      const msgs = chatMessages[room] || [];
+      const lastM = msgs.length > 0 ? msgs[msgs.length - 1] : (conv.lastMessage ? {
+        text: conv.lastMessage.content,
+        type: conv.lastMessage.type,
+        time: new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        created_at: conv.lastMessage.createdAt
+      } : null);
 
-          if (u.email === "admin@resonira.com") {
-            contactId = 999;
-            contactName = "System Administrator";
-          }
-
-          const room = roomKey(currentUserId, authUserId);
-          const msgs = chatMessages[room] || [];
-        const lastM = msgs.length > 0 ? msgs[msgs.length - 1] : null;
-
-        return {
-          id: contactId,
-          authUserId,
-          name: contactName,
-          email: u.email,
-          avatar: contactName.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase(),
-          online: u.status === "Active",
-          lastMsg: lastM ? (lastM.type === "file" ? "📎 File attached" : lastM.type === "image" ? "📸 Image" : lastM.text) : "Available for chat",
-          unread: msgs.filter(m => !m.me && !m.read).length,
-          time: lastM ? lastM.time : "",
-          lastTs: lastM ? new Date(lastM.created_at || 0).getTime() : 0,
-          role: u.employeeRole || u.role,
-          dept: u.department || "Company",
-          lastSeen: u.lastSeen,
-        };
-      });
-
-    // Ensure admin contact is always present
-    if (user?.email?.toLowerCase() !== "admin@resonira.com" && !dynamicContacts.some(c => c.id === 999)) {
-      const adminUser = users.find(u => u.email?.toLowerCase() === "admin@resonira.com");
-      const adminAuthUserId = adminUser?.userId || 4;
-      const adminRoom = roomKey(currentUserId, adminAuthUserId);
-      const adminMsgs = chatMessages[adminRoom] || [];
-      const lastAdminM = adminMsgs.length > 0 ? adminMsgs[adminMsgs.length - 1] : null;
-
-
-      dynamicContacts.push({
-        id: 999,
-        authUserId: adminAuthUserId,
-        name: "System Administrator",
-        email: "admin@resonira.com",
-        avatar: "SA",
-        online: true,
-        lastMsg: lastAdminM ? (lastAdminM.type === "file" ? "📎 File attached" : lastAdminM.type === "image" ? "📸 Image" : lastAdminM.text) : "Organization HQ",
-        unread: adminMsgs.filter(m => !m.me && !m.read).length,
-        time: lastAdminM ? lastAdminM.time : "",
-        lastTs: lastAdminM ? new Date(lastAdminM.created_at || 0).getTime() : 0,
-        role: "Administrator",
-        dept: "IT",
-      });
-    }
+      return {
+        id: conv.id,
+        authUserId,
+        name: otherParticipant.name,
+        email: otherParticipant.email,
+        avatar: otherParticipant.name.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase(),
+        online: otherParticipant.status === "Active",
+        lastMsg: lastM ? (lastM.type === "file" ? "📎 File attached" : lastM.type === "image" ? "📸 Image" : (lastM.text || lastM.content)) : "No messages yet",
+        unread: msgs.filter(m => !m.me && !m.read).length,
+        time: lastM ? (lastM.time || new Date(lastM.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) : "",
+        lastTs: lastM ? new Date(lastM.created_at).getTime() : new Date(conv.updatedAt).getTime(),
+        role: otherParticipant.role,
+        dept: otherParticipant.department || "Company",
+      };
+    }).filter(Boolean) as Contact[];
 
     setContacts(dynamicContacts);
-    setActiveContact(prev => {
-      if (!prev && dynamicContacts.length > 0) return dynamicContacts[0];
-      if (prev) {
-        const found = dynamicContacts.find(c => c.id === prev.id);
-        return found || [...dynamicContacts].sort((a, b) => (b.lastTs || 0) - (a.lastTs || 0))[0];
-      }
-      return prev;
-    });
-  }, [users, currentUserId, chatMessages, user?.email]);
+    
+    // Auto-select first contact ONLY if none is active
+    if (!activeContact && dynamicContacts.length > 0) {
+      setActiveContact(dynamicContacts[0]);
+    }
+  }, [conversations, currentUserId, chatMessages]);
+
+  const startNewChat = (selectedUser: any) => {
+    setShowNewChatModal(false);
+    
+    // Check if conversation already exists
+    const existingContact = contacts.find(c => c.authUserId === selectedUser.userId);
+    if (existingContact) {
+      setActiveContact(existingContact);
+      return;
+    }
+
+    // Otherwise, create a draft contact
+    const draftContact: Contact = {
+      id: -Date.now(), // Temporary negative ID for draft state
+      authUserId: selectedUser.userId,
+      name: selectedUser.name,
+      email: selectedUser.email,
+      avatar: selectedUser.name.split(" ").map((n: string) => n[0]).join("").substring(0, 2).toUpperCase(),
+      online: selectedUser.status === "Active",
+      lastMsg: "New Conversation",
+      unread: 0,
+      time: "",
+      lastTs: Date.now(),
+      role: selectedUser.employeeRole || selectedUser.role,
+      dept: selectedUser.department || "Company",
+    };
+
+    setActiveContact(draftContact);
+    setContacts(prev => [draftContact, ...prev]);
+  };
 
   // ─── Derived State ──────────────────────────────────────────────
   const rid = activeContact ? roomKey(currentUserId, activeContact.authUserId) : "";
@@ -592,10 +592,7 @@ export default function Chat() {
     toast.success(labels[action] || action);
   }, [activeContact, muted, currentUserId]);
 
-  // ─── Loading State ──────────────────────────────────────────────
-  if (!activeContact) {
-    return <div className="animate-pulse p-10 flex text-center justify-center items-center h-[calc(100vh-100px)] text-muted-foreground font-medium">Loading Contacts from User Management...</div>;
-  }
+  // ─── Rendering ──────────────────────────────────────────────────
 
   return (
     <div className="animate-fade-up -m-6 flex h-[calc(100vh-0px)]">
@@ -608,7 +605,14 @@ export default function Chat() {
         <div className="p-4 space-y-3 border-b border-border">
           <div className="flex items-center justify-between">
             <h2 className="font-heading font-bold text-base">{isHR ? "HR Communications" : isManager ? "Team Chat" : "Messages"}</h2>
-            {totalUnread > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold">{totalUnread} new</span>}
+            <div className="flex items-center gap-2">
+              {totalUnread > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold">{totalUnread} new</span>}
+              <button onClick={() => setShowNewChatModal(true)} 
+                      className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                      title="Start New Chat">
+                <Send size={14} className="rotate-[-45deg] translate-y-[-1px] translate-x-[1px]" />
+              </button>
+            </div>
           </div>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -626,7 +630,17 @@ export default function Chat() {
         <div className="flex-1 overflow-y-auto">
           {(isHR || isManager) && <div className="px-4 pt-3 pb-1"><span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Recent Conversations</span></div>}
           {sortedContacts.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">No conversations found</div>
+            <div className="flex flex-col items-center justify-center p-12 text-center opacity-60">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center text-3xl mb-4">💬</div>
+              <p className="text-sm font-semibold text-foreground mb-1">No chats yet</p>
+              <p className="text-xs text-muted-foreground mb-4">Start a conversation with your team</p>
+              <button 
+                onClick={() => setShowNewChatModal(true)}
+                className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+              >
+                Start New Chat
+              </button>
+            </div>
           ) : sortedContacts.map(c => (
             <div key={c.id} onClick={() => handleContactSelect(c)}
               className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200 border-l-2 ${activeContact.id === c.id ? "bg-primary/5 border-primary" : "hover:bg-secondary/50 border-transparent"}`}>
@@ -668,127 +682,189 @@ export default function Chat() {
       </div>
 
       {/* ───── Chat Window ───── */}
-      <div className="flex-1 flex flex-col relative">
-        {/* Header with action icons */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-background/80 backdrop-blur-sm relative">
-          <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${activeContact.group ? "bg-accent/20 text-accent text-sm" : "bg-primary/20 text-primary"}`}>{activeContact.avatar}</div>
-            <div>
-              <div className="text-sm font-semibold flex items-center gap-2">
-                {activeContact.name}
-                {activeContact.group && <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 text-accent font-bold uppercase">Group</span>}
-                {muted.has(activeContact.id) && <span className="text-[9px] px-1.5 py-0.5 rounded bg-warning/10 text-warning font-bold">Muted</span>}
-              </div>
-              <div className={`text-[11px] flex items-center gap-1 ${activeContact.online ? "text-success" : "text-muted-foreground"}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${activeContact.online ? "bg-success" : "bg-muted-foreground"}`} />
-                {activeContact.online ? "Online" : (activeContact.lastSeen ? `Last seen ${new Date(activeContact.lastSeen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Offline")}
-                {activeContact.role && <span className="text-muted-foreground ml-1">· {activeContact.role}</span>}
-              </div>
-            </div>
+      <div className="flex-1 flex flex-col relative overflow-hidden">
+        {!activeContact ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-zinc-50/30 dark:bg-zinc-900/10">
+            <div className="w-24 h-24 rounded-full bg-primary/5 flex items-center justify-center text-4xl mb-6 animate-bounce duration-[3s]">💬</div>
+            <h2 className="text-xl font-bold mb-2">Welcome to Resonira Chat</h2>
+            <p className="text-muted-foreground text-sm max-w-[300px]">
+              Select a conversation from the sidebar or start a new chat with your team.
+            </p>
+            <button 
+              onClick={() => setShowNewChatModal(true)}
+              className="mt-6 px-6 py-2.5 rounded-2xl gradient-primary text-primary-foreground text-sm font-bold shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+            >
+              Start New Conversation
+            </button>
           </div>
-          <div className="flex items-center gap-1">
-            <Tooltip label="Start Voice Call"><button onClick={() => setVoiceCall(true)} className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"><Phone size={15} className="text-muted-foreground" /></button></Tooltip>
-            <Tooltip label="Start Video Call"><button onClick={() => setVideoCall(true)} className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"><Video size={15} className="text-muted-foreground" /></button></Tooltip>
-            {isAdmin && <Tooltip label="View Employee Info"><button className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"><User size={15} className="text-muted-foreground" /></button></Tooltip>}
-            <div className="w-px h-4 bg-border mx-1" />
-            <Tooltip label="More Options"><button onClick={() => setShowMore(!showMore)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showMore ? "bg-secondary text-foreground" : "hover:bg-secondary text-muted-foreground"}`}><MoreVertical size={15} /></button></Tooltip>
-          </div>
-          {showMore && <MoreMenu onClose={() => setShowMore(false)} onAction={handleMenuAction} />}
-        </div>
-
-        {/* Messages */}
-        <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-5 space-y-4 bg-zinc-50/30 dark:bg-zinc-900/10">
-          {loadingMessages && currentMessages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-50">
-              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-xs font-medium">Syncing messages...</p>
-            </div>
-          ) : currentMessages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full space-y-3 opacity-40">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-xl">💬</div>
-              <p className="text-sm font-medium">No messages yet. Start the conversation!</p>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-3 py-2">
-                <div className="flex-1 h-px bg-border" /><span className="text-[10px] text-muted-foreground font-medium px-3 py-1 rounded-full bg-secondary">Today</span><div className="flex-1 h-px bg-border" />
-              </div>
-              {currentMessages.map((m, idx) => (
-            <div key={`${m.id}-${idx}`} className={`flex w-full ${m.me ? "justify-end" : "justify-start"} group mb-1 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-              {!m.me && <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[9px] font-bold mr-2 mt-auto mb-1 shrink-0">{m.from.substring(0, 2).toUpperCase()}</div>}
-              <div className={`max-w-[75%] flex flex-col ${m.me ? "items-end" : "items-start"}`}>
-                {!m.me && <span className="text-[10px] text-muted-foreground ml-1 mb-0.5 block font-medium">{m.from}</span>}
-                <div className={`px-4 py-2.5 rounded-2xl text-sm relative ${m.me ? "gradient-primary text-primary-foreground rounded-br-md shadow-lg shadow-primary/10" : "bg-card border border-border rounded-bl-md shadow-sm"}`}>
-                  {m.type === "image" ? (
-                    <img 
-                      src={m.imageUrl || m.fileUrl} 
-                      alt="Shared" 
-                      className="max-h-48 rounded-xl cursor-pointer hover:opacity-90 transition-opacity" 
-                      onClick={() => setPreviewImage(m.imageUrl || m.fileUrl!)} 
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        // Fallback to file UI if image fails
-                        if (target.nextElementSibling) target.nextElementSibling.classList.remove('hidden');
-                      }}
-                    />
-                  ) : m.type === "file" ? (
-                    <div className="flex items-center gap-2">
-                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${m.me ? "bg-primary-foreground/20" : "bg-primary/20"}`}><FileText size={14} className={m.me ? "text-primary-foreground" : "text-primary"} /></div>
-                      <div><span className="text-xs font-medium">{m.fileName || m.text}</span>{m.fileSize && <div className={`text-[9px] opacity-70 ${m.me ? "text-primary-foreground" : "text-muted-foreground"}`}>{m.fileSize}</div>}</div>
-                      {(m.imageUrl || m.fileUrl) ? (
-                        <a href={m.imageUrl || m.fileUrl} download={m.fileName || "document"} target="_blank" rel="noopener noreferrer" title="Download File" className={m.me ? "text-primary-foreground" : "text-primary"}>
-                          <Download size={14} className="ml-2 opacity-80 hover:opacity-100 cursor-pointer" />
-                        </a>
-                      ) : (
-                        <span title="File not available for download">
-                          <Download size={14} className={`ml-2 opacity-40 cursor-not-allowed ${m.me ? "text-primary-foreground" : "text-muted-foreground"}`} />
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
-                  )}
-                  <div className={`flex items-center gap-1 mt-1 ${m.me ? "justify-end" : "justify-start"}`}>
-                    <span className={`text-[10px] ${m.me ? "text-primary-foreground/70" : "text-muted-foreground/80"}`}>{m.time}</span>
-                    {m.me && (m.read ? <CheckCheck size={12} className="text-primary-foreground/70" /> : <Check size={12} className="text-primary-foreground/70" />)}
+        ) : (
+          <>
+            {/* Header with action icons */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-background/80 backdrop-blur-sm relative shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${activeContact.group ? "bg-accent/20 text-accent text-sm" : "bg-primary/20 text-primary"}`}>{activeContact.avatar}</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    <span className="truncate">{activeContact.name}</span>
+                    {activeContact.group && <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 text-accent font-bold uppercase shrink-0">Group</span>}
+                    {muted.has(activeContact.id) && <span className="text-[9px] px-1.5 py-0.5 rounded bg-warning/10 text-warning font-bold shrink-0">Muted</span>}
+                  </div>
+                  <div className={`text-[11px] flex items-center gap-1 ${activeContact.online ? "text-success" : "text-muted-foreground"}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${activeContact.online ? "bg-success" : "bg-muted-foreground"}`} />
+                    <span className="truncate">
+                      {activeContact.online ? "Online" : (activeContact.lastSeen ? `Last seen ${new Date(activeContact.lastSeen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Offline")}
+                    </span>
+                    {activeContact.role && <span className="text-muted-foreground ml-1 truncate">· {activeContact.role}</span>}
                   </div>
                 </div>
               </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Tooltip label="Start Voice Call"><button onClick={() => setVoiceCall(true)} className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"><Phone size={15} className="text-muted-foreground" /></button></Tooltip>
+                <Tooltip label="Start Video Call"><button onClick={() => setVideoCall(true)} className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"><Video size={15} className="text-muted-foreground" /></button></Tooltip>
+                {isAdmin && <Tooltip label="View Employee Info"><button className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"><User size={15} className="text-muted-foreground" /></button></Tooltip>}
+                <div className="w-px h-4 bg-border mx-1" />
+                <Tooltip label="More Options"><button onClick={() => setShowMore(!showMore)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showMore ? "bg-secondary text-foreground" : "hover:bg-secondary text-muted-foreground"}`}><MoreVertical size={15} /></button></Tooltip>
+              </div>
+              {showMore && <MoreMenu onClose={() => setShowMore(false)} onAction={handleMenuAction} />}
             </div>
-            ))}
-            </>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
 
-        {/* Upload Preview */}
-        {pendingFile && <UploadPreview file={pendingFile} onSend={sendFile} onCancel={() => setPendingFile(null)} />}
-
-        {/* Input Area */}
-        <div className="p-4 border-t border-border bg-background/50 relative">
-          {(isHR || isManager) && (
-            <div className="flex gap-2 mb-2">
-              {(isManager ? ["📌 Assign Task", "📋 Standup Note", "🔄 Sprint Update"] : ["📋 Leave Update", "📅 Meeting Invite", "📢 Announcement"]).map((qr, i) => (
-                <button key={i} onClick={() => setMsgInput(qr.split(" ").slice(1).join(" ") + ": ")} className="text-[10px] px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 text-muted-foreground transition-colors border border-border/50">{qr}</button>
-              ))}
+            {/* Messages */}
+            <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-5 space-y-4 bg-zinc-50/30 dark:bg-zinc-900/10">
+              {loadingMessages && currentMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-50">
+                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-xs font-medium">Syncing messages...</p>
+                </div>
+              ) : currentMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full space-y-3 opacity-40">
+                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-xl">💬</div>
+                  <p className="text-sm font-medium">No messages yet. Start the conversation!</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 py-2">
+                    <div className="flex-1 h-px bg-border" /><span className="text-[10px] text-muted-foreground font-medium px-3 py-1 rounded-full bg-secondary">Today</span><div className="flex-1 h-px bg-border" />
+                  </div>
+                  {currentMessages.map((m, idx) => (
+                <div key={`${m.id}-${idx}`} className={`flex w-full ${m.me ? "justify-end" : "justify-start"} group mb-1 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                  {!m.me && <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[9px] font-bold mr-2 mt-auto mb-1 shrink-0">{m.from.substring(0, 2).toUpperCase()}</div>}
+                  <div className={`max-w-[75%] flex flex-col ${m.me ? "items-end" : "items-start"}`}>
+                    {!m.me && <span className="text-[10px] text-muted-foreground ml-1 mb-0.5 block font-medium">{m.from}</span>}
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm relative ${m.me ? "gradient-primary text-primary-foreground rounded-br-md shadow-lg shadow-primary/10" : "bg-card border border-border rounded-bl-md shadow-sm"}`}>
+                      {m.type === "image" ? (
+                        <img 
+                          src={m.imageUrl || m.fileUrl} 
+                          alt="Shared" 
+                          className="max-h-48 rounded-xl cursor-pointer hover:opacity-90 transition-opacity" 
+                          onClick={() => setPreviewImage(m.imageUrl || m.fileUrl!)} 
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            // Fallback to file UI if image fails
+                            if (target.nextElementSibling) target.nextElementSibling.classList.remove('hidden');
+                          }}
+                        />
+                      ) : m.type === "file" ? (
+                        <div className="flex items-center gap-2">
+                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${m.me ? "bg-primary-foreground/20" : "bg-primary/20"}`}><FileText size={14} className={m.me ? "text-primary-foreground" : "text-primary"} /></div>
+                          <div><span className="text-xs font-medium">{m.fileName || m.text}</span>{m.fileSize && <div className={`text-[9px] opacity-70 ${m.me ? "text-primary-foreground" : "text-muted-foreground"}`}>{m.fileSize}</div>}</div>
+                          {(m.imageUrl || m.fileUrl) ? (
+                            <a href={m.imageUrl || m.fileUrl} download={m.fileName || "document"} target="_blank" rel="noopener noreferrer" title="Download File" className={m.me ? "text-primary-foreground" : "text-primary"}>
+                              <Download size={14} className="ml-2 opacity-80 hover:opacity-100 cursor-pointer" />
+                            </a>
+                          ) : (
+                            <span title="File not available for download">
+                              <Download size={14} className={`ml-2 opacity-40 cursor-not-allowed ${m.me ? "text-primary-foreground" : "text-muted-foreground"}`} />
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                      )}
+                      <div className={`flex items-center gap-1 mt-1 ${m.me ? "justify-end" : "justify-start"}`}>
+                        <span className={`text-[10px] ${m.me ? "text-primary-foreground/70" : "text-muted-foreground/80"}`}>{m.time}</span>
+                        {m.me && (m.read ? <CheckCheck size={12} className="text-primary-foreground/70" /> : <Check size={12} className="text-primary-foreground/70" />)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                ))}
+                </>
+              )}
+              <div ref={messagesEndRef} />
             </div>
-          )}
-          {showEmoji && <EmojiPicker onSelect={(e: string) => setMsgInput(p => p + e)} onClose={() => setShowEmoji(false)} />}
-          <div className="flex items-center gap-2 bg-secondary rounded-2xl px-4 py-2.5 border border-border/30 focus-within:border-primary/30 transition-colors">
-            <Tooltip label="Attach File"><button onClick={() => fileRef.current?.click()} className="p-1.5 rounded-lg hover:bg-muted transition-all hover:scale-110"><Paperclip size={16} className="text-muted-foreground" /></button></Tooltip>
-            <Tooltip label="Send Image"><button onClick={() => imgRef.current?.click()} className="p-1.5 rounded-lg hover:bg-muted transition-all hover:scale-110"><ImageIcon size={16} className="text-muted-foreground" /></button></Tooltip>
-            <Tooltip label="Emoji"><button onClick={() => setShowEmoji(!showEmoji)} className="p-1.5 rounded-lg hover:bg-muted transition-all hover:scale-110"><Smile size={16} className={showEmoji ? "text-primary" : "text-muted-foreground"} /></button></Tooltip>
-            <input value={msgInput} onChange={e => setMsgInput(e.target.value)} placeholder={isHR ? "Type an HR message..." : isManager ? "Message your team..." : "Type a message..."} className="flex-1 bg-transparent text-sm focus:outline-none" onKeyDown={e => { if (e.key === "Enter") handleSend(); }} />
-            <button onClick={handleSend} disabled={!msgInput.trim()} className="p-2 rounded-xl gradient-primary transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100"><Send size={16} className="text-primary-foreground" /></button>
-          </div>
-        </div>
+
+            {/* Upload Preview */}
+            {pendingFile && <UploadPreview file={pendingFile} onSend={sendFile} onCancel={() => setPendingFile(null)} />}
+
+            {/* Input Area */}
+            <div className="p-4 border-t border-border bg-background/50 relative">
+              {(isHR || isManager) && (
+                <div className="flex gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
+                  {(isManager ? ["📌 Assign Task", "📋 Standup Note", "🔄 Sprint Update"] : ["📋 Leave Update", "📅 Meeting Invite", "📢 Announcement"]).map((qr, i) => (
+                    <button key={i} onClick={() => setMsgInput(qr.split(" ").slice(1).join(" ") + ": ")} className="text-[10px] px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 text-muted-foreground transition-colors border border-border/50 whitespace-nowrap">{qr}</button>
+                  ))}
+                </div>
+              )}
+              {showEmoji && <EmojiPicker onSelect={(e: string) => setMsgInput(p => p + e)} onClose={() => setShowEmoji(false)} />}
+              <div className="flex items-center gap-2 bg-secondary rounded-2xl px-4 py-2.5 border border-border/30 focus-within:border-primary/30 transition-colors">
+                <Tooltip label="Attach File"><button onClick={() => fileRef.current?.click()} className="p-1.5 rounded-lg hover:bg-muted transition-all hover:scale-110"><Paperclip size={16} className="text-muted-foreground" /></button></Tooltip>
+                <Tooltip label="Send Image"><button onClick={() => imgRef.current?.click()} className="p-1.5 rounded-lg hover:bg-muted transition-all hover:scale-110"><ImageIcon size={16} className="text-muted-foreground" /></button></Tooltip>
+                <Tooltip label="Emoji"><button onClick={() => setShowEmoji(!showEmoji)} className="p-1.5 rounded-lg hover:bg-muted transition-all hover:scale-110"><Smile size={16} className={showEmoji ? "text-primary" : "text-muted-foreground"} /></button></Tooltip>
+                <input value={msgInput} onChange={e => setMsgInput(e.target.value)} placeholder={isHR ? "Type an HR message..." : isManager ? "Message your team..." : "Type a message..."} className="flex-1 bg-transparent text-sm focus:outline-none" onKeyDown={e => { if (e.key === "Enter") handleSend(); }} />
+                <button onClick={handleSend} disabled={!msgInput.trim()} className="p-2 rounded-xl gradient-primary transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100"><Send size={16} className="text-primary-foreground" /></button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ───── Modals ───── */}
       {voiceCall && <VoiceCallModal contact={activeContact} onEnd={() => setVoiceCall(false)} />}
       {videoCall && <VideoCallModal contact={activeContact} onEnd={() => setVideoCall(false)} />}
       {previewImage && <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />}
+
+      {/* ───── New Chat Modal ───── */}
+      {showNewChatModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-background w-full max-w-md rounded-2xl shadow-2xl border border-border animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
+              <h3 className="font-bold text-sm">Start New Chat</h3>
+              <button onClick={() => setShowNewChatModal(false)} className="p-1 rounded-full hover:bg-muted"><X size={16} /></button>
+            </div>
+            <div className="p-4 bg-zinc-50/20 dark:bg-zinc-900/20">
+              <div className="relative mb-4">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input 
+                  autoFocus
+                  placeholder="Search employees..." 
+                  className="w-full bg-background border border-border rounded-xl pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="max-h-[350px] overflow-y-auto space-y-1">
+                {users
+                  .filter(u => u.email?.toLowerCase().trim() !== user?.email?.toLowerCase().trim() && u.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .map(u => (
+                    <div 
+                      key={u.id} 
+                      onClick={() => startNewChat(u)}
+                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-primary/5 cursor-pointer transition-colors group"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                        {u.name.split(" ").map((n: any) => n[0]).join("").substring(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{u.name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{u.employeeRole || u.role} · {u.department}</p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

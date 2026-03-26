@@ -48,7 +48,7 @@ export default function UserManagement() {
       return;
     }
 
-    if ((role === "Employee" || role === "HR" || role === "Manager") && (!formData.department || !formData.employeeRole)) {
+    if ((role === "Employee") && (!formData.department || !formData.employeeRole)) {
       toast.error(`Please provide Department and Role for the ${role}`);
       return;
     }
@@ -150,79 +150,109 @@ export default function UserManagement() {
                 <option>Employee</option>
                 <option>Manager</option>
                 <option>HR</option>
-                <option>Admin</option>
               </select>
             </div>
 
-            <div className="card-surface overflow-hidden">
-              {isLoading ? (
-                <div className="p-12 text-center text-muted-foreground flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                  Loading accounts from database...
-                </div>
-              ) : (
+            {isLoading ? (
+              <div className="card-surface p-12 text-center text-muted-foreground flex flex-col items-center gap-3">
+                <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                Loading accounts from database...
+              </div>
+            ) : (() => {
+              const managerHrUsers = filteredUsers.filter(u => u.role === "Manager" || u.role === "HR" || u.role === "Admin");
+              const employeeUsers = filteredUsers.filter(u => u.role === "Employee");
+
+              const renderTable = (list: typeof filteredUsers, emptyMsg: string) => (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-muted-foreground text-left">
-                        <th className="p-4">Name</th>
-                        <th className="p-4">Email</th>
-                        <th className="p-4">Role</th>
-                        <th className="p-4">Department</th>
-                        <th className="p-4">Status</th>
-                        <th className="p-4 text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredUsers.map(u => (
-                        <tr key={u.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                          <td className="p-4 font-medium">{u.name}</td>
-                          <td className="p-4 text-muted-foreground">{u.email}</td>
-                          <td className="p-4">
-                            <span className={`badge-pill ${
-                              u.role === "Admin" ? "bg-destructive/15 text-destructive" :
-                              u.role === "Manager" ? "bg-primary/15 text-primary" :
-                              u.role === "HR" ? "bg-success/15 text-success" :
-                              "bg-secondary text-muted-foreground"
-                            }`}>
-                              {u.role === "Employee" && u.employeeRole ? `${u.employeeRole}` : u.role}
-                            </span>
-                          </td>
-                          <td className="p-4 text-muted-foreground">{u.department || "—"}</td>
-                          <td className="p-4">
-                            <button 
-                              onClick={() => toggleUserStatus(u.id)}
-                              className={`badge-pill flex items-center gap-1.5 transition-all hover:scale-105 ${
-                                u.status === "Active" ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"
-                              }`}
-                            >
-                              {u.status === "Active" ? <UserCheck size={12} /> : <UserX size={12} />}
-                              {u.status}
-                            </button>
-                          </td>
-                          <td className="p-4">
-                            <div className="flex justify-center gap-2">
-                              <button 
-                                onClick={() => setEditUser(u)}
-                                className="p-2 rounded-lg hover:bg-primary/10 text-primary transition-all"
-                              >
-                                <Edit size={16} />
-                              </button>
-                              <button 
-                                onClick={() => setIsDeleting(u.id)}
-                                className="p-2 rounded-lg hover:bg-destructive/10 text-destructive transition-all"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
+                  {list.length === 0 ? (
+                    <div className="p-8 text-center text-muted-foreground text-sm">{emptyMsg}</div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground text-left">
+                          <th className="p-4">Name</th>
+                          <th className="p-4">Email</th>
+                          <th className="p-4">Role</th>
+                          <th className="p-4">Department</th>
+                          <th className="p-4">Status</th>
+                          <th className="p-4 text-center">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {list.map(u => (
+                          <tr key={u.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                            <td className="p-4 font-medium">{u.name}</td>
+                            <td className="p-4 text-muted-foreground">{u.email}</td>
+                            <td className="p-4">
+                              <span className={`badge-pill ${
+                                u.role === "Admin" ? "bg-destructive/15 text-destructive" :
+                                u.role === "Manager" ? "bg-primary/15 text-primary" :
+                                u.role === "HR" ? "bg-success/15 text-success" :
+                                "bg-secondary text-muted-foreground"
+                              }`}>
+                                {u.role === "Employee" && u.employeeRole ? `${u.employeeRole}` : u.role}
+                              </span>
+                            </td>
+                            <td className="p-4 text-muted-foreground">{u.department || "—"}</td>
+                            <td className="p-4">
+                              <button 
+                                onClick={() => toggleUserStatus(u.id)}
+                                className={`badge-pill flex items-center gap-1.5 transition-all hover:scale-105 ${
+                                  u.status === "Active" ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"
+                                }`}
+                              >
+                                {u.status === "Active" ? <UserCheck size={12} /> : <UserX size={12} />}
+                                {u.status}
+                              </button>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex justify-center gap-2">
+                                <button 
+                                  onClick={() => setEditUser(u)}
+                                  className="p-2 rounded-lg hover:bg-primary/10 text-primary transition-all"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => setIsDeleting(u.id)}
+                                  className="p-2 rounded-lg hover:bg-destructive/10 text-destructive transition-all"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+
+              return (
+                <>
+                  {/* Manager / HR / Admin Section */}
+                  <div className="card-surface overflow-hidden">
+                    <div className="px-5 py-3 border-b border-border bg-primary/5 flex items-center gap-2">
+                      <Shield size={16} className="text-primary" />
+                      <h3 className="text-sm font-bold text-foreground">Managers & HR</h3>
+                      <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary">{managerHrUsers.length}</span>
+                    </div>
+                    {renderTable(managerHrUsers, "No managers or HR accounts found")}
+                  </div>
+
+                  {/* Employees Section */}
+                  <div className="card-surface overflow-hidden">
+                    <div className="px-5 py-3 border-b border-border bg-accent/5 flex items-center gap-2">
+                      <Users size={16} className="text-accent" />
+                      <h3 className="text-sm font-bold text-foreground">Employees</h3>
+                      <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-accent/15 text-accent">{employeeUsers.length}</span>
+                    </div>
+                    {renderTable(employeeUsers, "No employee accounts found")}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -281,7 +311,7 @@ export default function UserManagement() {
                   </div>
                 ) : null}
 
-                {(activeTab === "addEmployee" || activeTab === "addHR" || activeTab === "addManager") && (
+                {(activeTab === "addEmployee") && (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
@@ -436,12 +466,15 @@ export default function UserManagement() {
                 </div>
                 {editUser.role !== "Admin" && (
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Password</label>
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Password (Initial)</label>
                     <input
-                      value={editUser.password || ""}
-                      onChange={e => setEditUser({ ...editUser, password: e.target.value })}
-                      className="w-full bg-secondary border border-border rounded-xl px-4 py-3 text-sm focus:border-primary outline-none transition-all"
+                      value={editUser.initial_password || editUser.password || ""}
+                      readOnly
+                      className="w-full bg-secondary/50 border border-border rounded-xl px-4 py-3 text-sm outline-none transition-all cursor-default text-muted-foreground"
                     />
+                    {!editUser.initial_password && (
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">Password was set before tracking was enabled</p>
+                    )}
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4">

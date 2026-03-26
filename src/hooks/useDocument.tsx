@@ -8,7 +8,6 @@ export interface DocumentRecord {
     size: string;
     by: string;
     date: string;
-    version: string;
     access: string;
     portal: "hr" | "employee";
 }

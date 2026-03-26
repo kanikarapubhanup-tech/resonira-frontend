@@ -81,6 +81,7 @@ export const useUserManagement = () => {
                 item.user?.role === "hr" ? "HR" : "Employee",
           department: item.department?.name || item.department || "",
           employeeRole: item.designation?.name || item.designation || item.employeeRole || "",
+          initial_password: item.initial_password || "",
           status: item.status === "active" || item.is_active ? "Active" : "Inactive",
           createdAt: item.created_at,
           updatedAt: item.updated_at,
